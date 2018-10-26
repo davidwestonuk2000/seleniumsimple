@@ -1,0 +1,351 @@
+/*
+	variables to define in Jenkins job
+	
+	BRANCH - the branch to build
+	
+	NODE - the node to build on
+	
+	RESETJIRA - set all the test scenarios to no run before the test (true or false)
+	PROJECTJIRAKEY - the jira key to receive functional test scenarios for
+	
+	ENVIRONMENT - the environment to run tests against
+	BROWSER - the browser to use for web test execution
+	TESTRUNNER - the name of the test runner to execute
+	SUITES - the tags to pass in for the functional test
+	TESTTAGS - the tags to pass in for the functional test
+	
+	GATLINGSCENARIO - the name of the gatling scenario to run
+	THREADS - the number of peak threads
+	RAMPUP - the rampup time for the threads
+	PAUSE - the pause time between iterative requests
+	DURATION - the duration to run the gatling scenario
+	URLTOTEST - the url to pass in
+	
+	PERFORMANCETEST - run the performance tests or not
+	FUNCTIONALTEST - run the functional cucumber tests or not
+	FETCHJIRATESTS - re-fetch the jira test scenarios or not
+	REBUILD - recomiple the project or nots
+	ACCESSIBILITYTEST - run the accessibility checks or not
+	SITESPEED - run the sitespeed checks or not
+	SECURITYTEST - run the security test or not
+*/
+
+import hudson.tasks.test.AbstractTestResultAction
+
+
+
+node(NODE) {
+	
+	def err = null
+	currentBuild.result = "SUCCESS"
+	
+	//echo sh(returnStdout: true, script: 'env')
+	
+	// build start in 
+	hipchatSend color: 'GRAY', credentialId: 'hipchatv2', message: 'Automated tests started: <b><a href=\"$BUILD_URL\">$JOB_NAME (#$BUILD_NUMBER)</a></b><br><b>environment:</b> '+ENVIRONMENT+' <b><br>browser:</b> '+BROWSER+'<br><b>test-suites:</b> '+SUITES+' '+TESTTAGS+'<br><b>funcitonal test:</b> ${FUNCTIONALTEST}<br><b>performance test:</b> ${PERFORMANCETEST}<br><b>security test:</b> ${SECURITYTEST}<br><b>accessibility test:</b> ${ACCESSIBILITYTEST}<br><b>site speed test:</b> ${SITESPEED}<br><b>commit message:</b> ${COMMIT_MESSAGE,escape=false} changes: $HIPCHAT_CHANGES_OR_CAUSE', room: 'TestTeam', sendAs: 'Jenkins', server: 'api.hipchat.com', textFormat: true, v2enabled: true	
+	try {
+	
+		sh 'rm SeleniumWorkspace/SeleniumTests/target/*.json || echo "No json reports to delete"'
+	
+		env.JAVA_HOME="${tool 'JDK 1.8'}"
+		env.PATH="${env.JAVA_HOME}/bin:${env.PATH}"
+		sh 'java -version'
+		env.PATH = "${tool 'maven 3.2.2'}/bin:${env.PATH}"
+		
+		gitURL = 'git@bitbucket.org:infomentum/seleniumtests.git'
+		credentials = 'd0da9399-facc-4624-91e8-f66d6eb4ce5c'
+			
+		if (REBUILD=="true") {	
+			stage('Checkout') {
+				checkout()
+			}
+				
+			stage('Code quality') {
+				// run sonarqube
+				//sh '/mnt/SVN/jenkins/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarRunner/bin/sonar-runner -e -Dsonar.host.url=http://source.cloud.infomentum.co.uk:9000 -Dsonar.login=admin -Dsonar.password=admin -Dsonar.language=java -Dsonar.projectName=
+				//-Dsonar.projectVersion=$BUILD_NUMBER -Dsonar.projectKey=SeleniumTests -Dsonar.ojaudit.jws=SeleniumTests/seleniumTestsNew.jws -Dsonar.sources=. -Dsonar.projectBaseDir=SeleniumTests'
+			}
+			
+			stage('Build') {
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/selenium-server-standalone-3.12.0.jar -DgroupId=org.seleniumhq.selenium -DartifactId=selenium-server-standalone -Dversion=3.12.0 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/ojdbc6.jar -DgroupId=com.oracle -DartifactId=ojdbc6 -Dversion=11.1.0 -Dpackaging=jar'		
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/sqljdbc4-3.0.jar -DgroupId=com.microsoft -DartifactId=sqljdbc -Dversion=4.3.0 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/wlclient.jar -DgroupId=oracle -DartifactId=wlclient -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/weblogic.jar -DgroupId=oracle -DartifactId=weblogic -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/oracle.servicebus.services.core.jar -DgroupId=oracle.servicebus.services -DartifactId=core -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/oracle.servicebus.resources.service.jar -DgroupId=oracle.servicebus.resources -DartifactId=service -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/oracle.servicebus.kernel-wls.jar -DgroupId=oracle.servicebus -DartifactId=kernal-wls -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/oracle.servicebus.kernel-api.jar -DgroupId=oracle.servicebus -DartifactId=kernal-api -Dversion=12.2.1 -Dpackaging=jar'
+				sh 'mvn install:install-file -f SeleniumWorkspace/SeleniumTests/pom.xml -Dfile=Libraries/webdriver-accessibility-1.1.0-SNAPSHOT.jar -DgroupId=com.accessibility -DartifactId=webdriver-accessibility -Dversion=1.1.0-SNAPSHOT -Dpackaging=jar'
+				
+				sh 'mvn compile -f SeleniumWorkspace/SeleniumTests/pom.xml'
+			}
+		}
+		
+		else {
+			sh 'echo Rebuild not required'+REBUILD+'test'
+		}
+			
+		if (FETCHJIRATESTS=="true") {
+			stage 'GetTests'
+				sh 'rm SeleniumWorkspace/SeleniumTests/target/generated-data/features/**/*.feature || echo "No features to delete"'
+				sh 'mvn test -f SeleniumWorkspace/SeleniumTests/pom.xml -Dtest=DummyTest -DfailIfNoTests=false -Dmaven.test.failure.ignore=true'
+				sh 'mvn exec:java -f SeleniumWorkspace/SeleniumTests/pom.xml -Dexec.mainClass="com.infomentum.utilities.BuildFeatures" -Dexec.classpathScope=test -DfailIfNoTests=false -Dtest=BuildFeatures -Dmaven.test.failure.ignore=true -Dgatling.skip=true -Dgatling.test.skip=true -DRESET_JIRA='+RESETJIRA+' -DPROJECT_KEY='+PROJECTJIRAKEY+' '
+		}
+		
+		else {
+			sh 'echo Getting tests not required'
+		}
+			
+		if (BROWSER.contains("browser")) {
+			stage 'Start browser stack'
+				sh 'cd /mnt/SVN/jenkins'
+				sh './BrowserStackLocal -localIdentifier source nDGPpn1oUY3sW1sDY3ws -force &'
+				sh 'sleep 5'
+			}
+		else {
+			sh 'echo BrowserStack not required'
+		}
+		
+		if (FUNCTIONALTEST=="true") {
+			stage('Functional test') {
+			
+				sh 'docker-compose -f SeleniumWorkspace/Jenkinsfiles/docker-compose.yml up -d '
+				
+				// TODO run in browsers in paralell - need to consider reporting
+				
+				wrap([$class: 'Xvfb', additionalOptions: '', assignedLabels: '', autoDisplayName: true, debug: true, installationName: 'xvfb', screen: '1366x768x24', shutdownWithBuild: true, timeout: 60]) {
+				
+					sh 'mvn test -f SeleniumWorkspace/SeleniumTests/pom.xml -Dtest='+TESTRUNNER+' \"-Dcucumber.options=--tags '+SUITES+' '+TESTTAGS+'\" -DfailIfNoTests=false -Denvironment='+ENVIRONMENT+' \"-Dbrowser='+BROWSER+'\" -DBUILD_NUMBER=${BUILD_NUMBER} -DBUILD_URL=${BUILD_URL} -Dmaven.test.failure.ignore=true'
+				
+				}
+				step([$class: 'CucumberReportPublisher', fileExcludePattern: '*-usage.json', fileIncludePattern: '*.json', ignoreFailedTests: true, jenkinsBasePath: '', jsonReportDirectory: 'SeleniumWorkspace/SeleniumTests/target', missingFails: false, parallelTesting: true, pendingFails: false, skippedFails: false, undefinedFails: false])
+				junit 'SeleniumWorkspace/SeleniumTests/target/cucumber-junit.xml'
+			}
+		}	
+		else {
+			sh 'echo Functional test not required'
+			// remove old reports
+		}
+		
+		if (PERFORMANCETEST=="true") {
+			stage('Peformance test') {
+				dir('gatling') {
+					sh 'mvn gatling:execute -Dgatling.simulationClass=computerdatabase.'+GATLINGSCENARIO+' -Dthreads='+THREADS+' -Drampup='+RAMPUP+' -Dduration='+DURATION+' -Dpause='+PAUSE+' -Denvironment='+URLTOTEST+''
+					gatlingArchive()
+				}
+			}
+		}
+		else {
+			sh 'echo Performance test not required'
+		}
+		
+		if (SITESPEED=="true") {
+			stage('Sitespeed test') {
+				// yslow
+				sh 'rm -rf sitespeed-result || echo \'Nothing to remove\''
+				sh '/mnt/SVN/phantomjs-1.9.8-linux-x86_64/bin/phantomjs /var/lib/jenkins/apps/yslow.js/yslow.js -i grade -f junit '+URLTOTEST+' > yslowresults.xml || echo \'Could not run yslow\''
+				//sh '/mnt/SVN/phantomjs-1.9.8-linux-x86_64/bin/phantomjs /var/lib/jenkins/apps/yslow.js/yslow.js -i comps -f xml '+URLTOTEST+' > yslow.xml || echo \'Commit failed. There is probably nothing to commit.\''
+				junit 'yslowresults.xml'
+				
+				// sitespeed io
+				sh 'sitespeed.io -u https://www.sitespeed.io --phantomjsPath /mnt/SVN/phantomjs-1.9.8-linux-x86_64/bin/phantomjs -r "$WORKSPACE/sitespeed-result/" -u ' + URLTOTEST + ' || echo \'Could not run sitespeed\''
+				//sh 'mkdir -p \"sitespeed-junit\" \"/var/lib/jenkins/apps/sitespeed.io/sitespeed-junit.io\" -r \"sitespeed-result/\" -o \"sitespeed-junit\" -l 85 -a 85 || echo \'Could not run site-speed mkdir\''
+				//step([$class: 'TapPublisher', discardOldReports: false, enableSubtests: false, failIfNoResults: false, failedTestsMarkBuildAsFailure: false, flattenTapResult: false, includeCommentDiagnostics: false, outputTapToConsole: true, planRequired: true, showOnlyFailures: false, skipIfBuildNotOk: false, stripSingleParents: false, testResults: 'yslow.tap', todoIsFailure: false, validateNumberOfTests: false, verbose: true])			
+				publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: '$WORKSPACE/sitespeed-result/**/**/', reportFiles: 'index.html', reportName: 'sitespeedio'])
+				
+				// google page insights
+				sh 'psi '+URLTOTEST+' --prettyprint=true --strategy=desktop --threshold=50 --format=json > google.json'
+			}
+				
+		}
+		
+		else {
+			sh 'echo Sitespeed test not required'
+		}
+		
+		if (SECURITYTEST=="true") {
+			stage('Security test') {
+								
+				//baseline scan
+				//sh 'docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-weekly zap-baseline.py -t '+ URLTOTEST +' -g gen.conf -r testreport-new.html'
+				sh 'docker-compose -f SeleniumWorkspace/Jenkinsfiles/docker-composeWithZAP.yml up -d '
+				
+				
+				// run the docker image and get the container id
+				CONTAINER_ID = sh (
+					script: 'docker ps -aqf "name=jenkinsfiles_zap_1"',
+					returnStdout: true
+				).trim()
+				
+				sh 'echo ' + CONTAINER_ID + ''
+
+				// check the status of the 
+				sh 'docker exec '+CONTAINER_ID+' zap-cli -p 2375 -v status -t 60'
+				
+				// start the docker daemon
+				sh 'docker exec '+CONTAINER_ID+' zap-cli -p 2375 -v start'
+				
+				// get the ip address of the docker server
+				sh 'docker inspect '+CONTAINER_ID+' | grep -m 1 "\\"IPAddress\\": \\"172"'
+				
+				IP_ADD = sh (
+					script: 'docker inspect '+CONTAINER_ID+' | grep -m 1 "\\"IPAddress\\": \\"172"',
+					returnStdout: true
+				).trim()
+				
+				sh 'echo '+IP_ADD+''
+				
+				IP_ADD = IP_ADD.substring(12,IP_ADD.size()-1).trim()
+				
+				sh 'echo '+IP_ADD+''
+								
+				//run some tests proxied to to the ZAP_PORT
+				wrap([$class: 'Xvfb', additionalOptions: '', assignedLabels: '', autoDisplayName: true, debug: true, installationName: 'xvfb', screen: '1366x768x24', shutdownWithBuild: true, timeout: 60]) {
+					sh 'mvn test -f SeleniumWorkspace/SeleniumTests/pom.xml -Dtest='+TESTRUNNER+' \"-Dcucumber.options=--tags '+SUITES+' '+TESTTAGS+'\" -DfailIfNoTests=false -DSECURITY_TEST=true -DZAP_ADDRESS='+IP_ADD+' -DZAP_PORT=2375 -Denvironment='+ENVIRONMENT+' \"-Dbrowser='+BROWSER+'\" -Dmaven.test.failure.ignore=true'
+				}
+				
+				// update the cucumber report
+				step([$class: 'CucumberReportPublisher', fileExcludePattern: '*-usage.json', fileIncludePattern: '*.json', ignoreFailedTests: true, jenkinsBasePath: '', jsonReportDirectory: 'SeleniumWorkspace/SeleniumTests/target', missingFails: false, parallelTesting: true, pendingFails: false, skippedFails: false, undefinedFails: false])
+								
+				sh 'docker logs '+ CONTAINER_ID +''
+
+				sh 'docker-compose -f SeleniumWorkspace/Jenkinsfiles/docker-composeWithZAP.yml down'
+			
+				// security headers test
+			
+				sh 'rm securityheaders.io/index.html* || echo \'Commit failed. There is probably nothing to commit.\''
+				sh 'wget -p -k "https://securityheaders.io/?q='+URLTOTEST+'&followRedirects=on" --no-check-certificate --page-requisites --convert-links --remote-encoding=ENC || echo \'Commit failed. There is probably nothing to commit.\''
+				//sh 'mv securityheaders.io/index.html* securityheaders.io/index.html'
+				//sh 'mv securityheaders.io/css/style-1000px.min.css?v=1.0.13 securityheaders.io/css/style-1000px.min.css'
+				//sh 'mv securityheaders.io/css/style-desktop.min.css?v=1.0.14 securityheaders.io/css/style-desktop.min.css'
+				//sh 'mv securityheaders.io/css/style.min.css?v=1.0.14 securityheaders.io/css/style.min.css'
+				//sh 'mv securityheaders.io/css/style-mobile.min.css?v=1.0.13 securityheaders.io/css/style-mobile.min.css'
+				//publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'securityheaders.io/', reportFiles: 'index.html', //reportName: 'securityheadersio'])
+				sh 'SEC_HEADER_SCORE=$(curl -I -X HEAD "https://securityheaders.io/?q='+URLTOTEST+'&followRedirects=on" | grep X-Grade | grep -oP "X-Grade: \\K.*") || echo \'Commit failed. There is probably nothing to commit.\''
+				sh 'echo $SEC_HEADER_SCORE'
+				
+				// TODO update build description
+				//--save-headers 
+			}	
+		}
+		
+		else {
+			sh 'echo Security test not required'
+		}
+		
+		if (ACCESSIBILITYTEST=="true") {
+			stage('Accessibility test') {
+			
+				sh '/mnt/SVN/node_modules/the-a11y-machine/a11ym -o, --output \"$WORKSPACE/a11ym/\" -s, --standards '+ACCESSIBILITYSTANDARDS+' -m, --maximum-urls 1000 '+URLTOTEST+''
+				publishHTML([allowMissing: true, alwaysLinkToLastBuild: true, keepAll: false, reportDir: 'a11ym/', reportFiles: 'index.html', reportName: 'Accessibility'])
+				
+				wrap([$class: 'Xvfb', additionalOptions: '', assignedLabels: '', autoDisplayName: true, debug: true, installationName: 'xvfb', screen: '1366x768x24', shutdownWithBuild: true, timeout: 60]) {
+					sh 'mvn test -f SeleniumWorkspace/SeleniumTests/pom.xml -Dtest='+PROJECTJIRAKEY+'AccessibilityTestRunner \"-Dcucumber.options=--tags @accessibility\" -DfailIfNoTests=false -Denvironment='+ENVIRONMENT+' \"-Dbrowser=Jenkins:firefox\" -Dmaven.test.failure.ignore=true'
+				}
+				
+				step([$class: 'CucumberReportPublisher', fileExcludePattern: '*-usage.json', fileIncludePattern: '*.json', ignoreFailedTests: true, jenkinsBasePath: '', jsonReportDirectory: 'SeleniumWorkspace/SeleniumTests/target', missingFails: false, parallelTesting: true, pendingFails: false, skippedFails: false, undefinedFails: false])
+
+			}
+		}
+		
+		else {
+			sh 'echo Accessibility test not required'
+		}
+	}
+	
+	catch (caughtError) {
+		
+		sh 'echo in error'
+		err = caughtError
+		currentBuild.result = "FAILURE"
+		
+		if (SECURITYTEST=="true") {
+			// kill all running containers
+			//sh 'docker-compose -f SeleniumWorkspace/Jenkinsfiles/docker-compose.yml down'
+		}
+	}
+	
+	finally {
+		
+		sh 'echo In finally'
+		
+			badge()
+		
+		if (currentBuild.result != "ABORTED") {
+			
+			emailext attachmentsPattern: 'SeleniumWorkspace/SeleniumTests/target/cucumber-html-report/*.png,SeleniumWorkspace/SeleniumTests/target/*.pdf', body: '''<html>
+
+			<p>Build $BUILD_NUMBER $BUILD_STATUS.</p>
+
+			<p>For more information, please see the following; <a href="$BUILD_URL">$BUILD_URL</a></p>
+			
+			<p>Automated tests complete: <b><a href=\"$BUILD_URL\">$JOB_NAME (#$BUILD_NUMBER)</a></b>
+			<br><b>status:</b> $BUILD_STATUS
+			<br><b>environment:</b> ${ENVIRONMENT}
+			<br><b>browser:</b> ${BROWSER}
+			<br><b>test-suites:</b> ${SUITES} ${TESTTAGS}
+			<br><b>duration:</b> $BUILD_DURATION 
+			<br><b>#tests:</b> ${TEST_COUNTS,var=\"total\"} #failures: ${TEST_COUNTS,var=\"fail\"} #skipped: ${TEST_COUNTS,var=\"skip\"} #passed: ${TEST_COUNTS,var=\"pass\"}
+			<br><b>funcitonal test:</b> ${FUNCTIONALTEST}
+			<br><b>performance test:</b> ${PERFORMANCETEST}
+			<br><b>security test:</b> ${SECURITYTEST}
+			<br><b>accessibility test:</b> ${ACCESSIBILITYTEST}
+			<br><b>site speed test:</b> ${SITESPEED}
+			<br><b>commit message:</b> ${COMMIT_MESSAGE,escape=false} changes: $HIPCHAT_CHANGES_OR_CAUSE</p>
+			
+			<p><b>Code quality</b></p>
+			<p>SonarQube report <a href="http://source.cloud.infomentum.co.uk:9000/dashboard/index/SeleniumTests">here</a></p>
+			<p><b>Test results</b></p>
+
+			${FILE, path="SeleniumWorkspace/SeleniumTests/target/cucumber-results-agg-test-results.html"}
+
+			</html>''', replyTo: '$DEFAULT_REPLYTO', subject: '$DEFAULT_SUBJECT', to: ''+EMAILTO+''
+			
+			if (currentBuild.result == "UNSTABLE") {
+				buildColor = "YELLOW"
+			}
+			
+			else if (currentBuild.result == "FAILURE") {
+				buildColor = "RED"
+			}
+			
+			else {
+				buildColor = "GREEN"
+			}
+			
+			// send hipchat notification
+			hipchatSend color: buildColor, credentialId: 'hipchatv2', message: 'Automated tests complete: <b><a href=\"$BUILD_URL\">$JOB_NAME (#$BUILD_NUMBER)</a></b> <br><b>status:</b> $BUILD_STATUS<br><b>environment:</b> '+ENVIRONMENT+'<br><b>browser:</b> '+BROWSER+'<br><b>test-suites:</b> '+SUITES+' '+TESTTAGS+'<br><b>duration:</b> $BUILD_DURATION<br><b>#tests:</b> ${TEST_COUNTS,var=\"total\"} <b>#failures:</b> ${TEST_COUNTS,var=\"fail\"} <b>#skipped:</b> ${TEST_COUNTS,var=\"skip\"} <b>#passed:</b> ${TEST_COUNTS,var=\"pass\"}<br><b>funcitonal test:</b> ${FUNCTIONALTEST}<br><b>performance test: ${PERFORMANCETEST}<br><b>security test: ${SECURITYTEST}<br><b>accessibility test:</b> ${ACCESSIBILITYTEST}<br><b>site speed test:</b> ${SITESPEED}<br><b>commit message:</b> ${COMMIT_MESSAGE,escape=false} changes: $HIPCHAT_CHANGES_OR_CAUSE', room: 'TestTeam', sendAs: 'Jenkins', server: 'api.hipchat.com', textFormat: true, v2enabled: true
+			
+			
+		}
+	}
+	
+	    /* Must re-throw exception to propagate error */
+    if (err) {
+        throw err
+    }
+		
+	
+}
+
+	/**
+	* Checkout from GIT 
+	*/
+	def checkout(){
+		git branch: BRANCH, credentialsId: credentials, url: gitURL
+	}
+	
+	def badge() {
+		def mng = manager
+		AbstractTestResultAction testResultAction = currentBuild.rawBuild.getAction(AbstractTestResultAction.class)
+			if (testResultAction != null) {
+				def total = testResultAction.totalCount
+				def failed = testResultAction.failCount
+				def skipped = testResultAction.skipCount
+				def passed = total - failed - skipped
+				mng.addShortText("Passed: "+passed+", Failed: "+failed+" "+ testResultAction.failureDiffString+", Skipped: "+skipped+", Total: "+total)
+			}
+			testResultAction = null
+			mng = null
+	}

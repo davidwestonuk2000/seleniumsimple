@@ -1,0 +1,54 @@
+# To execute this docker-compose yml file use docker-compose -f <file_name> up
+# Add the "-d" flag at the end for deattached execution
+version: '2'
+services:
+  firefox:
+    image: selenium/node-firefox:3.12.0-cobalt
+    networks:
+        - dockernet3
+    volumes:
+      - /dev/shm:/dev/shm
+    depends_on:
+      - hub
+    environment:
+      NODE_MAX_SESSION: 5
+      NODE_MAX_INSTANCES: 5
+      HUB_HOST: hub
+
+  chrome:
+    image: selenium/node-chrome:3.12.0-cobalt
+    networks:
+        - dockernet3
+    volumes:
+      - /dev/shm:/dev/shm
+    depends_on:
+      - hub
+    environment:
+      NODE_MAX_SESSION: 5
+      NODE_MAX_INSTANCES: 5
+      HUB_HOST: hub
+
+  hub:
+    image: selenium/hub:3.12.0-cobalt
+    networks:
+        - dockernet3
+    environment:
+      NODE_MAX_SESSION: 5
+      NODE_MAX_INSTANCES: 5
+    ports:
+      - "4441:4444"
+      
+  zap:
+    #build:
+    image: owasp/zap2docker-weekly
+    networks:
+        - dockernet3
+    volumes:
+      - /dev/zap:/dev/zap
+    command: zap.sh -daemon -host 0.0.0.0 -port 2375 -config api.disablekey=true -config database.recoverylog=false -config connection.timeoutInSecs=120 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    ports:
+      - "2375:2375"
+           
+networks:
+    dockernet3:
+        external: true
