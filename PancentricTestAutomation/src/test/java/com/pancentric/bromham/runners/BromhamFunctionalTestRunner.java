@@ -102,7 +102,7 @@ import java.util.List;
 
             ConfluenceHelper confluence = new ConfluenceHelper();
             String currentDir = System.getProperty("user.dir");
-            String downloadUrl = "https://confluence.pancentric.com"+confluence.reUploadNewFile(currentDir + "/target/","cucumber-results-test-results.pdf","15007801","15007844");
+            String downloadUrl = "";//https://confluence.pancentric.com"+confluence.reUploadNewFile(currentDir + "/target/","cucumber-results-test-results.pdf","15007801","15007844");
 
             SlackMessage message = new SlackMessage();
             SlackMessageAttachment attach = new SlackMessageAttachment("Automated Tests completed in " + System.getProperty("environment"), "Tests Passed: " + passedTests + "\n" +
