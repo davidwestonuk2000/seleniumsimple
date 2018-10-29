@@ -241,7 +241,7 @@ public class SeleniumWebdriver {
             options.setExperimentalOption("prefs", chromePrefs);
             capability.setCapability(ChromeOptions.CAPABILITY, options);
             capability.setCapability(CapabilityType.ACCEPT_SSL_CERTS, true);
-            driver =  new RemoteWebDriver(new URL("http://172.19.0.3:4441/wd/hub/"), capability);
+            driver =  new RemoteWebDriver(new URL("http://0.0.0.0:4441/wd/hub/"), capability);
         }
     
         else if (browser.equals("Chrome")) {
