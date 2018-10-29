@@ -67,8 +67,8 @@ import java.util.List;
             PropertyFetcher propertyfile = new PropertyFetcher();
             // locate the appropriate prop file
             String propfile = BromhamStepDefinitions.projectName + "/properties/"+ BromhamStepDefinitions.environment;
-            String urlHREF = propertyfile.getPropValues(propfile,"dataFileLocation");
-            download.fileDownloaderNonBrowser(urlHREF, "target/", "data.xlsx", 10);
+//            String urlHREF = propertyfile.getPropValues(propfile,"dataFileLocation");
+//            download.fileDownloaderNonBrowser(urlHREF, "target/", "data.xlsx", 10);
         }
 
         @AfterSuite
